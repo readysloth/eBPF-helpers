@@ -1,3 +1,10 @@
+#ifndef __KERNEL__
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+#include <string.h>
+#endif
+
 static char* byte_to_hex(uint8_t byte){
   static char byte_to_hex_map[] = \
     "00" "\0" "01" "\0" "02" "\0" "03" "\0" "04" "\0" "05" "\0" \
@@ -46,20 +53,62 @@ static char* byte_to_hex(uint8_t byte){
   return &byte_to_hex_map[byte*3];
 }
 
-static char byte_to_base64(char byte){
-    static char base64_map[] =
-    {
-      [0] = 'A', [1] = 'B', [2] = 'C', [3] = 'D', [4] = 'E', [5] = 'F',
-      [6] = 'G', [7] = 'H', [8] = 'I', [9] = 'J', [10] = 'K', [11] = 'L',
-      [12] = 'M', [13] = 'N', [14] = 'O', [15] = 'P', [16] = 'Q', [17] = 'R',
-      [18] = 'S', [19] = 'T', [20] = 'U', [21] = 'V', [22] = 'W', [23] = 'X',
-      [24] = 'Y', [25] = 'Z', [26] = 'a', [27] = 'b', [28] = 'c', [29] = 'd',
-      [30] = 'e', [31] = 'f', [32] = 'g', [33] = 'h', [34] = 'i', [35] = 'j',
-      [36] = 'k', [37] = 'l', [38] = 'm', [39] = 'n', [40] = 'o', [41] = 'p',
-      [42] = 'q', [43] = 'r', [44] = 's', [45] = 't', [46] = 'u', [47] = 'v',
-      [48] = 'w', [49] = 'x', [50] = 'y', [51] = 'z', [52] = '0', [53] = '1',
-      [54] = '2', [55] = '3', [56] = '4', [57] = '5', [58] = '6', [59] = '7',
-      [60] = '8', [61] = '9', [62] = '+', [63] = '/'
-    };
-    return base64_map[byte & (sizeof(base64_map) - 1)];
+static char map_byte_to_base64(uint8_t b64byte){
+  static char base64_map[] =
+  {
+    [0] = 'A', [1] = 'B', [2] = 'C', [3] = 'D', [4] = 'E', [5] = 'F',
+    [6] = 'G', [7] = 'H', [8] = 'I', [9] = 'J', [10] = 'K', [11] = 'L',
+    [12] = 'M', [13] = 'N', [14] = 'O', [15] = 'P', [16] = 'Q', [17] = 'R',
+    [18] = 'S', [19] = 'T', [20] = 'U', [21] = 'V', [22] = 'W', [23] = 'X',
+    [24] = 'Y', [25] = 'Z', [26] = 'a', [27] = 'b', [28] = 'c', [29] = 'd',
+    [30] = 'e', [31] = 'f', [32] = 'g', [33] = 'h', [34] = 'i', [35] = 'j',
+    [36] = 'k', [37] = 'l', [38] = 'm', [39] = 'n', [40] = 'o', [41] = 'p',
+    [42] = 'q', [43] = 'r', [44] = 's', [45] = 't', [46] = 'u', [47] = 'v',
+    [48] = 'w', [49] = 'x', [50] = 'y', [51] = 'z', [52] = '0', [53] = '1',
+    [54] = '2', [55] = '3', [56] = '4', [57] = '5', [58] = '6', [59] = '7',
+    [60] = '8', [61] = '9', [62] = '+', [63] = '/'
+  };
+  return base64_map[b64byte & 0b111111];
+}
+
+typedef union {
+  unsigned value : 24;
+} base64_block;
+
+
+static char _map_six_bit_chunk(base64_block block, uint8_t pos){
+  return map_byte_to_base64(block.value >> 6 * (3 - pos));
+}
+
+static size_t bytes_to_base64(
+    uint8_t *buf,
+    size_t buf_size,
+    char *out,
+    size_t out_size){
+  base64_block base64_bit_repr = {0};
+
+  size_t written = 0;
+  for (size_t i = 0; i < buf_size; i++){
+    if (i > 0 && i % 3 == 0){
+      for (size_t j = 0; j < 4; j++){
+        out[written++] = _map_six_bit_chunk(base64_bit_repr, j);
+      }
+      base64_bit_repr.value = 0;
+    }
+    base64_bit_repr.value |= buf[i] << 8 * (2 - i % 3);
+  }
+
+  /* remaining chunks */
+  size_t rest = buf_size * 4/3 - written + 1;
+  for (size_t j = 0; j < rest; j++){
+    out[written++] = _map_six_bit_chunk(base64_bit_repr, j);
+  }
+
+  /* padding */
+  size_t written_without_padding = written;
+  for (size_t i = 0; i < written_without_padding % 6; i++){
+    out[written++] = '=';
+  }
+
+  return written;
 }
