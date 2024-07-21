@@ -16,7 +16,7 @@ unit-tests: unit-tests.gen.o
 	$(CC) $(CFLAGS) -o $@ $+
 
 clean:
-	rm -f *.o core.*
+	rm -f *.o core.* *.gen.c
 
 mrproper: clean
 	rm -f unit-tests
