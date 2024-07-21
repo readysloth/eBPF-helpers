@@ -53,6 +53,10 @@ static char* byte_to_hex(uint8_t byte){
   return &byte_to_hex_map[byte*3];
 }
 
+typedef union {
+  unsigned value : 24;
+} base64_block;
+
 static char map_byte_to_base64(uint8_t b64byte){
   static char base64_map[] =
   {
@@ -71,12 +75,7 @@ static char map_byte_to_base64(uint8_t b64byte){
   return base64_map[b64byte & 0b111111];
 }
 
-typedef union {
-  unsigned value : 24;
-} base64_block;
-
-
-static char _map_six_bit_chunk(base64_block block, uint8_t pos){
+static inline char _map_six_bit_chunk(base64_block block, uint8_t pos){
   return map_byte_to_base64(block.value >> 6 * (3 - pos));
 }
 
@@ -85,13 +84,24 @@ static size_t bytes_to_base64(
     size_t buf_size,
     char *out,
     size_t out_size){
+  if (!buf_size || !out_size){
+    return 0;
+  }
+
+  const size_t base64_chunk_size = 6;
+  size_t bits_unprocessed = buf_size * 8;
   base64_block base64_bit_repr = {0};
 
   size_t written = 0;
   for (size_t i = 0; i < buf_size; i++){
-    if (i > 0 && i % 3 == 0){
+    bool bit_chunk_ready = i > 0 && i % 3 == 0;
+    if (bit_chunk_ready){
       for (size_t j = 0; j < 4; j++){
+        if (written == out_size){
+          return 0;
+        }
         out[written++] = _map_six_bit_chunk(base64_bit_repr, j);
+        bits_unprocessed -= base64_chunk_size;
       }
       base64_bit_repr.value = 0;
     }
@@ -99,16 +109,25 @@ static size_t bytes_to_base64(
   }
 
   /* remaining chunks */
-  size_t rest = buf_size * 4/3 - written + 1;
-  for (size_t j = 0; j < rest; j++){
-    out[written++] = _map_six_bit_chunk(base64_bit_repr, j);
+  for (size_t j = 0; j < 4; j++){
+    if (written == out_size){
+      return 0;
+    }
+
+    if (bits_unprocessed){
+      out[written++] = _map_six_bit_chunk(base64_bit_repr, j);
+      bits_unprocessed -= bits_unprocessed > base64_chunk_size
+                          ? base64_chunk_size
+                          : bits_unprocessed;
+    }
+    else{
+      out[written++] = '=';
+    }
   }
 
-  /* padding */
-  size_t written_without_padding = written;
-  for (size_t i = 0; i < written_without_padding % 6; i++){
-    out[written++] = '=';
+  if (written == out_size){
+    return 0;
   }
-
+  out[written++] = '\0';
   return written;
 }
