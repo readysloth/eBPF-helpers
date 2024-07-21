@@ -87,6 +87,7 @@ static size_t bytes_to_base64(
   if (!buf_size || !out_size){
     return 0;
   }
+#define OUTPUT_PROTECT() if (written == out_size){ return 0; }
 
   const size_t base64_chunk_size = 6;
   size_t bits_unprocessed = buf_size * 8;
@@ -97,9 +98,7 @@ static size_t bytes_to_base64(
     bool bit_chunk_ready = i > 0 && i % 3 == 0;
     if (bit_chunk_ready){
       for (size_t j = 0; j < 4; j++){
-        if (written == out_size){
-          return 0;
-        }
+        OUTPUT_PROTECT();
         out[written++] = _map_six_bit_chunk(base64_bit_repr, j);
         bits_unprocessed -= base64_chunk_size;
       }
@@ -110,9 +109,7 @@ static size_t bytes_to_base64(
 
   /* remaining chunks */
   for (size_t j = 0; j < 4; j++){
-    if (written == out_size){
-      return 0;
-    }
+    OUTPUT_PROTECT();
 
     if (bits_unprocessed){
       out[written++] = _map_six_bit_chunk(base64_bit_repr, j);
@@ -125,9 +122,9 @@ static size_t bytes_to_base64(
     }
   }
 
-  if (written == out_size){
-    return 0;
-  }
+  OUTPUT_PROTECT();
   out[written++] = '\0';
   return written;
+
+#undef OUTPUT_PROTECT
 }
